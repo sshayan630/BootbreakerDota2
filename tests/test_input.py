@@ -1,12 +1,13 @@
-import pydirectinput
-
-from bootbreaker.input import Controller
+from bootbreaker.input import Controller, _KEYS
 
 
-def test_importing_input_disables_pydirectinput_pause():
-    # The global PAUSE (default ~0.1s per key event) stalled the loop on every
-    # direction change; importing our module must have zeroed it.
-    assert pydirectinput.PAUSE == 0
+def test_key_names_map_to_pynput_keys():
+    # The rest of the app steers with these three string keys; the backend must
+    # know how to translate every one of them into a pynput key object.
+    from pynput.keyboard import Key
+
+    assert set(_KEYS) == {"a", "d", "space"}
+    assert _KEYS["space"] == Key.space
 
 
 class FakeBackend:

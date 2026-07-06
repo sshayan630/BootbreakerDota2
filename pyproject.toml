@@ -1,14 +1,13 @@
 [project]
 name = "bootbreaker-auto"
 version = "0.1.0"
-description = "Auto-player for the Dota 2 Bootbreaker arcade minigame"
+description = "Auto-player for the Dota 2 Bootbreaker arcade minigame (macOS)"
 requires-python = ">=3.10"
 dependencies = [
     "mss",
     "opencv-python",
     "numpy",
-    "pydirectinput",
-    "keyboard",
+    "pynput",
 ]
 
 [dependency-groups]

@@ -3,7 +3,7 @@
 import argparse
 import time
 
-import keyboard
+from pynput import keyboard as _kb
 
 from bootbreaker import capture, config, detect
 from bootbreaker.bot import Bot
@@ -49,8 +49,24 @@ def _ensure_region(recalibrate: bool) -> dict:
     region = None if recalibrate else config.load_config()
     if region is None:
         print("[bootbreaker] calibrating play region...")
-        region = capture.calibrate(config.DEFAULT_CONFIG_PATH)
-        print(f"[bootbreaker] region: {region}")
+        import mss
+
+        with mss.mss() as sct:
+            scale, ox, oy = capture.display_scale(sct)
+            full = capture.grab_fullscreen(sct=sct)
+            if not full.any():
+                print(
+                    "[bootbreaker] WARNING: captured screen is all black. Grant "
+                    "this terminal Screen Recording permission in System "
+                    "Settings -> Privacy & Security, then restart."
+                )
+            region = capture.calibrate(
+                config.DEFAULT_CONFIG_PATH,
+                grabber=lambda: full,
+                scale=scale,
+                offset=(ox, oy),
+            )
+        print(f"[bootbreaker] region: {region} (display scale {scale:.2f})")
     return region
 
 
@@ -222,7 +238,15 @@ def main(argv: list[str] | None = None) -> None:
     region = None
     toggle = _Toggle()
 
-    keyboard.add_hotkey("f8", toggle.flip)
+    # pynput global hotkey listener. Fires toggle.flip() on F8 from any window
+    # (needs Accessibility permission, same as sending keys). Runs on its own
+    # thread; we stop it in the finally below.
+    def _on_press(key):
+        if key == _kb.Key.f8:
+            toggle.flip()
+
+    listener = _kb.Listener(on_press=_on_press)
+    listener.start()
     print("[bootbreaker] started PAUSED. Open Dota Bootbreaker, then press F8.")
     print("[bootbreaker] press F8 to pause/resume, Ctrl+C to quit.")
 
@@ -264,5 +288,6 @@ def main(argv: list[str] | None = None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        listener.stop()
         controller.release_all()
         print("\n[bootbreaker] stopped.")
