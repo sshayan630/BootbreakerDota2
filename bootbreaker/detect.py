@@ -223,7 +223,13 @@ def detect_cart(image, strip_frac: float = 0.25) -> tuple[int, int] | None:
 _KEY_ICON_PATH = os.path.join(os.path.dirname(__file__), "key_icon.png")
 _KEY_TEMPLATE = None
 _PRETHROW_THRESHOLD = 0.8
-_PRETHROW_BAND = (0.5, 0.72)
+# Vertical band (fraction of region height) the key icon is searched in. Widened
+# upward from the original 0.5: when the play field is taller than the display,
+# calibration clamps the region height, which shifts the prompt up to ~0.49 -
+# right at the old band's top edge, so only a sliver of the icon was inside it.
+# 0.42 keeps the whole icon in-band; the reference prompt frames sit at 0.5-0.72
+# and stay covered.
+_PRETHROW_BAND = (0.42, 0.72)
 
 
 # The key icon is a fixed sprite, but its on-screen pixel size scales with the
