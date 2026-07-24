@@ -31,7 +31,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--recalibrate", action="store_true", help="force play-region re-detection"
     )
+    parser.add_argument(
+        "--delay", type=float, default=3.0,
+        help="seconds to count down after F8 before reading the screen, so you "
+             "can focus/un-pause Dota first (default 3)",
+    )
     return parser
+
+
+def _countdown(seconds: float) -> None:
+    """Give the user a moment to bring Dota to the front and un-pause before the
+    bot starts capturing."""
+    whole = int(seconds)
+    for n in range(whole, 0, -1):
+        print(f"[bootbreaker] reading in {n}...")
+        time.sleep(1)
+    frac = seconds - whole
+    if frac > 0:
+        time.sleep(frac)
 
 
 class _Toggle:
@@ -238,13 +255,20 @@ def main(argv: list[str] | None = None) -> None:
     print("[bootbreaker] press F8 to pause/resume, Ctrl+C to quit.")
 
     frame_i = 0
+    was_running = False
     last_t = time.perf_counter()
     try:
         while True:
             if not toggle.running:
+                was_running = False
                 controller.release_all()
                 time.sleep(0.05)
                 continue
+
+            if not was_running:  # just resumed via F8 - give the user a moment
+                _countdown(args.delay)
+                was_running = True
+                last_t = time.perf_counter()
 
             if region is None:
                 region = _ensure_region(args.recalibrate)

@@ -226,19 +226,41 @@ _PRETHROW_THRESHOLD = 0.8
 _PRETHROW_BAND = (0.5, 0.72)
 
 
-def detect_prethrow(image, threshold: float = _PRETHROW_THRESHOLD) -> bool:
-    """True when the pre-throw prompt (the space-bar key icon) is on screen -
-    i.e. the game is waiting for us to lock/throw the boot."""
+# The key icon is a fixed sprite, but its on-screen pixel size scales with the
+# game's resolution - and template matching is NOT scale-invariant. The bundled
+# template was cut at one resolution, so on a different display it would never
+# score high enough. Match it at a spread of scales and take the best; 1.0 is in
+# the set so this is a superset of the old single-scale behaviour.
+_PRETHROW_SCALES = (0.6, 0.7, 0.8, 0.9, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0)
+
+
+def prethrow_score(image) -> float:
+    """Best multi-scale template-match score for the space-bar key icon in the
+    prompt band (0..1). Exposed so tooling can read the raw score."""
     global _KEY_TEMPLATE
     if _KEY_TEMPLATE is None:
         tmpl = cv2.imread(_KEY_ICON_PATH, cv2.IMREAD_GRAYSCALE)
         if tmpl is None:
-            return False  # template missing -> never claim pre-throw
+            return -1.0  # template missing -> never claim pre-throw
         _KEY_TEMPLATE = tmpl
     h = image.shape[0]
     band = image[int(_PRETHROW_BAND[0] * h):int(_PRETHROW_BAND[1] * h), :]
-    if band.shape[0] < _KEY_TEMPLATE.shape[0] or band.shape[1] < _KEY_TEMPLATE.shape[1]:
-        return False
+    if band.shape[0] < 2 or band.shape[1] < 2:
+        return -1.0
     gray = cv2.cvtColor(band, cv2.COLOR_BGR2GRAY)
-    res = cv2.matchTemplate(gray, _KEY_TEMPLATE, cv2.TM_CCOEFF_NORMED)
-    return float(res.max()) >= threshold
+    best = -1.0
+    for s in _PRETHROW_SCALES:
+        t = _KEY_TEMPLATE if s == 1.0 else cv2.resize(
+            _KEY_TEMPLATE, None, fx=s, fy=s,
+            interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC)
+        if t.shape[0] > gray.shape[0] or t.shape[1] > gray.shape[1]:
+            continue
+        res = cv2.matchTemplate(gray, t, cv2.TM_CCOEFF_NORMED)
+        best = max(best, float(res.max()))
+    return best
+
+
+def detect_prethrow(image, threshold: float = _PRETHROW_THRESHOLD) -> bool:
+    """True when the pre-throw prompt (the space-bar key icon) is on screen -
+    i.e. the game is waiting for us to lock/throw the boot."""
+    return prethrow_score(image) >= threshold

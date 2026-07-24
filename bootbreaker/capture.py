@@ -1,9 +1,17 @@
 """Screen capture via mss, plus one-time play-region calibration."""
 
+import time
+
 import mss
 import numpy as np
 
 from bootbreaker import config, detect
+
+# Calibration samples a few frames per monitor and keeps the widest detected
+# panel, so a transitional frame (gold ornament momentarily fragmented) can't
+# produce a cropped region.
+_CALIB_SAMPLES = 6
+_CALIB_GAP = 0.08  # seconds between calibration samples
 
 
 def _to_bgr(shot) -> np.ndarray:
@@ -58,13 +66,27 @@ def calibrate_auto(config_path: str, sct) -> dict:
     """
     saw_black = False
     for i, mon in enumerate(sct.monitors[1:], start=1):
-        shot = sct.grab(mon)
-        image = _to_bgr(shot)
-        if not image.any():
+        # Sample several frames and keep the WIDEST detected panel. The gold
+        # ornament can fragment on a transitional frame, yielding a too-narrow
+        # (cropped) region; the full panel gives the widest contour, so max-width
+        # across a few frames rejects those fragments.
+        scale = shot_scale = None
+        region = None
+        black_here = False
+        for _ in range(_CALIB_SAMPLES):
+            shot = sct.grab(mon)
+            image = _to_bgr(shot)
+            if not image.any():
+                black_here = True
+                break
+            r = detect.detect_play_region(image)
+            if r is not None and (region is None or r["width"] > region["width"]):
+                region = r
+                scale = shot.width / mon["width"] if mon["width"] else 1.0
+            time.sleep(_CALIB_GAP)
+        if black_here:
             saw_black = True
             continue
-        scale = shot.width / mon["width"] if mon["width"] else 1.0
-        region = detect.detect_play_region(image)
         if region is not None:
             left = mon["left"] + round(region["left"] / scale)
             top = mon["top"] + round(region["top"] / scale)
