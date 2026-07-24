@@ -143,9 +143,17 @@ def detect_ball(image, cart: tuple[int, int] | None = None) -> tuple[int, int] |
 # Aim-dot search band (fractions of region height): below the bricks, above the
 # cart body. Exposed so the debug overlay can draw the same band.
 _AIM_BAND = (0.52, 0.83)
+# The ornate side frame (skeleton hands, curtains) is warm-coloured and otherwise
+# gets read as aim dots, levering the fitted line to a wild diagonal. Ignore this
+# fraction of the width on each side - the aim line lives in the central field.
+_AIM_SIDE_MARGIN = 0.16
+# Blank a box around the cart so its own warm body/boot/trim isn't read as aim
+# dots (px; the aim line proper starts just above the cart).
+_AIM_CART_BLANK_UP = 110
+_AIM_CART_BLANK_HALF_W = 130
 
 
-def aim_fit(image):
+def aim_fit(image, cart=None):
     """Fit the launch-trajectory aim line. Returns (angle, pts, unit):
       angle - degrees from vertical (0 = straight up, + right, - left), or None
               if fewer than 3 aim dots were found;
@@ -154,12 +162,23 @@ def aim_fit(image):
     The dots are small warm blobs in the empty band between the lowest bricks
     and the cart. Only meaningful during the THROW BOOT phase.
     """
-    h = image.shape[0]
+    h, w = image.shape[:2]
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, (0, 120, 150), (30, 255, 255))
-    band = np.zeros(mask.shape, dtype=mask.dtype)
-    band[int(_AIM_BAND[0] * h):int(_AIM_BAND[1] * h), :] = 255
-    mask = cv2.bitwise_and(mask, band)
+    # Restrict to the search band...
+    mask[:int(_AIM_BAND[0] * h), :] = 0
+    mask[int(_AIM_BAND[1] * h):, :] = 0
+    # ...drop the warm ornate side columns...
+    side = int(_AIM_SIDE_MARGIN * w)
+    mask[:, :side] = 0
+    mask[:, w - side:] = 0
+    # ...and blank the cart, whose warm parts otherwise read as aim dots.
+    if cart is None:
+        cart = detect_cart(image)
+    if cart is not None:
+        cx, cy = cart
+        mask[max(0, cy - _AIM_CART_BLANK_UP):,
+             max(0, cx - _AIM_CART_BLANK_HALF_W):min(w, cx + _AIM_CART_BLANK_HALF_W)] = 0
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     pts = []
     for c in contours:
