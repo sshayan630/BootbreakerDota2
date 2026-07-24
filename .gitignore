@@ -11,3 +11,11 @@ tmp/
 *.egg-info/
 dist/
 build/
+
+# macOS cruft
+.DS_Store
+
+# local diagnostics
+diag*.py
+diag_*.png
+analysis_*.png

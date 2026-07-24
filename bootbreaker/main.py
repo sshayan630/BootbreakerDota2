@@ -48,25 +48,12 @@ class _Toggle:
 def _ensure_region(recalibrate: bool) -> dict:
     region = None if recalibrate else config.load_config()
     if region is None:
-        print("[bootbreaker] calibrating play region...")
+        print("[bootbreaker] calibrating play region (scanning all monitors)...")
         import mss
 
         with mss.mss() as sct:
-            scale, ox, oy = capture.display_scale(sct)
-            full = capture.grab_fullscreen(sct=sct)
-            if not full.any():
-                print(
-                    "[bootbreaker] WARNING: captured screen is all black. Grant "
-                    "this terminal Screen Recording permission in System "
-                    "Settings -> Privacy & Security, then restart."
-                )
-            region = capture.calibrate(
-                config.DEFAULT_CONFIG_PATH,
-                grabber=lambda: full,
-                scale=scale,
-                offset=(ox, oy),
-            )
-        print(f"[bootbreaker] region: {region} (display scale {scale:.2f})")
+            region = capture.calibrate_auto(config.DEFAULT_CONFIG_PATH, sct)
+        print(f"[bootbreaker] region: {region}")
     return region
 
 

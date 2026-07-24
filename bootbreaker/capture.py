@@ -48,6 +48,54 @@ def display_scale(sct) -> tuple[float, int, int]:
     return scale, mon["left"], mon["top"]
 
 
+def calibrate_auto(config_path: str, sct) -> dict:
+    """Scan every physical monitor and calibrate on the first one showing the
+    Bootbreaker popup, storing the region in absolute (virtual-desktop) screen
+    coordinates so `grab()` reads the correct display on multi-monitor setups.
+
+    mss `monitors[0]` is the union of all displays; `monitors[1:]` are the real
+    ones. We grab each, run the gold-panel detector, and take the first hit.
+    """
+    saw_black = False
+    for i, mon in enumerate(sct.monitors[1:], start=1):
+        shot = sct.grab(mon)
+        image = _to_bgr(shot)
+        if not image.any():
+            saw_black = True
+            continue
+        scale = shot.width / mon["width"] if mon["width"] else 1.0
+        region = detect.detect_play_region(image)
+        if region is not None:
+            left = mon["left"] + round(region["left"] / scale)
+            top = mon["top"] + round(region["top"] / scale)
+            # Clamp to the monitor so the region never spills into the
+            # off-screen black void beyond the display edges - the play field's
+            # height ratio can extend past the bottom of the screen, which would
+            # otherwise push detect_cart's bottom strip into that void.
+            right = min(left + round(region["width"] / scale), mon["left"] + mon["width"])
+            bottom = min(top + round(region["height"] / scale), mon["top"] + mon["height"])
+            abs_region = {
+                "left": left,
+                "top": top,
+                "width": right - left,
+                "height": bottom - top,
+            }
+            print(f"[bootbreaker] found play area on monitor {i} {mon} "
+                  f"(scale {scale:.2f})")
+            config.save_config(abs_region, config_path)
+            return abs_region
+    hint = (
+        "If the bot only saw black screens, grant this terminal Screen Recording "
+        "permission (System Settings -> Privacy & Security -> Screen Recording), "
+        "then quit and reopen the terminal."
+        if saw_black else
+        "Make sure the Bootbreaker minigame popup is actually visible on one of "
+        "your screens (windowed/borderless, not exclusive fullscreen), then press "
+        "F8 again."
+    )
+    raise RuntimeError("Could not find the Bootbreaker play area on any monitor. " + hint)
+
+
 def calibrate(
     config_path: str,
     grabber=grab_fullscreen,
