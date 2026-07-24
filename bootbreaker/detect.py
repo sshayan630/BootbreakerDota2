@@ -208,6 +208,14 @@ def detect_aim_angle(image) -> float | None:
     return aim_fit(image)[0]
 
 
+# Fixed red decorations (the ornate lantern/pillars) flank the play field at the
+# far edges. They must be excluded from cart detection: otherwise the cart's span
+# is measured between those *fixed* points, so the reported centre stays pinned
+# near the middle no matter where the cart actually moves - the bot then can't
+# track the cart at all. Ignore this fraction of the width on each side.
+_CART_SIDE_MARGIN = 0.17
+
+
 def detect_cart(image, strip_frac: float = 0.25) -> tuple[int, int] | None:
     h = image.shape[0]
     y0 = int(h * (1 - strip_frac))
@@ -217,6 +225,11 @@ def detect_cart(image, strip_frac: float = 0.25) -> tuple[int, int] | None:
     mask = cv2.inRange(hsv, (0, 120, 90), (10, 255, 255)) | cv2.inRange(
         hsv, (170, 120, 90), (179, 255, 255)
     )
+    # Drop the fixed side decorations so only the moving cart remains.
+    w = strip.shape[1]
+    side = int(_CART_SIDE_MARGIN * w)
+    mask[:, :side] = 0
+    mask[:, w - side:] = 0
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, _KERNEL)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = [c for c in contours if cv2.contourArea(c) >= _MIN_CART_AREA]
