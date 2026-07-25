@@ -18,10 +18,16 @@ _debug_win_ready = False
 # rotates which way, so the loop self-corrects: if a pulse makes the angle worse,
 # it flips direction. Deadband can't be 0 (the loop would oscillate forever a
 # fraction of a degree off) - a few degrees off vertical is plenty catchable.
-_AIM_TOLERANCE = 5  # degrees from vertical: close enough to straight-up to throw
-_AIM_STEP_HOLD = 0.05  # seconds to hold A/D per correction pulse
-_AIM_SETTLE = 0.04  # seconds after releasing before re-reading (let the aim update)
-_AIM_MAX_ADJUST = 40  # max correction pulses before throwing anyway
+_AIM_TOLERANCE = 6  # degrees from vertical: close enough to straight-up to throw
+# Proportional pulse length: hold A/D for a time proportional to how far off
+# vertical we are, so far shots take a big rotation but near-vertical shots take
+# a tiny nudge and don't fly past. A fixed pulse overshot on re-throws that
+# started far off, swinging the aim wildly across vertical (never settling).
+_AIM_STEP_GAIN = 0.0007  # seconds of hold per degree off vertical
+_AIM_STEP_MIN = 0.006    # never pulse shorter than this (must register at all)
+_AIM_STEP_MAX = 0.05     # never pulse longer than this (cap the big far-shot swing)
+_AIM_SETTLE = 0.06  # seconds after releasing before re-reading (let the aim update)
+_AIM_MAX_ADJUST = 60  # max correction pulses before throwing anyway
 _AIM_SAMPLE_DELAY = 0.02  # seconds between re-reads when the aim isn't visible yet
 
 
@@ -101,8 +107,11 @@ def _launch(controller: Controller, region: dict, debug: bool = False) -> None:
         if prev_abs is not None and abs(angle) >= prev_abs:
             key = "d" if key == "a" else "a"
         prev_abs = abs(angle)
+        # Proportional pulse: big when far off, tiny when nearly vertical, so we
+        # ease onto vertical instead of overshooting and oscillating across it.
+        step = min(_AIM_STEP_MAX, max(_AIM_STEP_MIN, abs(angle) * _AIM_STEP_GAIN))
         controller.hold(key)  # pulse A/D to rotate the aim
-        time.sleep(_AIM_STEP_HOLD)
+        time.sleep(step)
         controller.release_all()
         time.sleep(_AIM_SETTLE)
 
